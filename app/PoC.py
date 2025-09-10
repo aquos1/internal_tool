@@ -5,38 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import numpy as np
-import openai
-import io
 
-# ✅ Make sure this matches your secrets.toml
-openai.api_key = st.secrets["openai_api_key"]
-
-def interpret_regression(coeffs_df, metrics_df):
-    coeffs_text = coeffs_df.to_string(index=False)
-    metrics_text = metrics_df.to_string(index=False)
-
-    prompt = f"""
-    You are an analyst interpreting the results of an OLS regression.
-
-    Here is the coefficients table:
-    {coeffs_text}
-
-    Here are the test metrics:
-    {metrics_text}
-
-    Please explain:
-    1. Which variables are statistically significant and what their coefficient signs mean.
-    2. How strong the model is (based on R², MAE, RMSE).
-    3. Practical interpretation of the coefficients (direction, magnitude, relevance).
-    4. Any limitations of the model.
-    """
-
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",  # or gpt-4o
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-    )
-    return response.choices[0].message.content
 
 
 # ---- App UI ----
@@ -160,12 +129,6 @@ if uploaded_file is not None:
                     file_name="ols_test_metrics.csv",
                     mime="text/csv"
                 )
-
-                # ---- INTERPRETATION ----
-                if st.button("Interpret Results"):
-                    interpretation = interpret_regression(summary_df, pd.DataFrame([test_metrics]))
-                    st.markdown("### 📊 Interpretation")
-                    st.write(interpretation)
 
             except Exception as e:
                 st.error(f"❌ OLS Regression failed: {e}")
