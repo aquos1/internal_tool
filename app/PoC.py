@@ -112,21 +112,20 @@ if uploaded_file is not None:
                 st.subheader("Test Metrics")
                 st.write(test_metrics)
 
-                # ---- CSV EXPORTS ----
-                csv_summary = summary_df.to_csv().encode("utf-8")
-                st.download_button(
-                    label="📥 Download OLS Coefficients (CSV)",
-                    data=csv_summary,
-                    file_name="ols_coefficients.csv",
-                    mime="text/csv"
-                )
+                # ---- MASTER CSV EXPORT ----
+                coeffs_out = summary_df.copy()
+                coeffs_out.insert(0, "Section", "Coefficients")
 
-                metrics_df = pd.DataFrame([test_metrics])
-                csv_metrics = metrics_df.to_csv(index=False).encode("utf-8")
+                metrics_out = pd.DataFrame([test_metrics])
+                metrics_out.insert(0, "Section", "Test Metrics")
+
+                master_df = pd.concat([coeffs_out, metrics_out], ignore_index=True)
+
+                csv_master = master_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    label="📥 Download OLS Test Metrics (CSV)",
-                    data=csv_metrics,
-                    file_name="ols_test_metrics.csv",
+                    label="📥 Download OLS Results (One CSV)",
+                    data=csv_master,
+                    file_name="ols_results.csv",
                     mime="text/csv"
                 )
 
@@ -135,3 +134,4 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"❌ Error during setup: {e}")
+
