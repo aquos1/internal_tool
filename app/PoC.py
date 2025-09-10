@@ -158,11 +158,11 @@ if uploaded_file is not None:
 
                     buffer = io.StringIO()
                     master_df.to_csv(buffer, index=False)
-                    buffer.seek(0)
+                    csv_bytes = buffer.getvalue().encode("utf-8")
 
                     st.download_button(
                         label="⬇️ Download Master CSV",
-                        data=buffer,
+                        data=csv_bytes,
                         file_name="ols_master_results.csv",
                         mime="text/csv"
                     )
