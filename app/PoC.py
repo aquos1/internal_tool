@@ -89,12 +89,13 @@ if uploaded_file is not None:
                 model = sm.OLS(y_train, X_train_const).fit()
 
                 summary_df = pd.DataFrame({
-                    "coef": model.params,
-                    "std err": model.bse,
-                    "t": model.tvalues,
-                    "P>|t|": model.pvalues,
-                    "[0.025": model.conf_int()[0],
-                    "0.975]": model.conf_int()[1]
+                    "Feature": model.params.index,  # Keep feature names
+                    "coef": model.params.values,
+                    "std err": model.bse.values,
+                    "t": model.tvalues.values,
+                    "P>|t|": model.pvalues.values,
+                    "[0.025": model.conf_int()[0].values,
+                    "0.975]": model.conf_int()[1].values
                 })
 
                 st.subheader("OLS Regression Results")
