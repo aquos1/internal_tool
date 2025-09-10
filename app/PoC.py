@@ -5,26 +5,42 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import numpy as np
+import openai
+import io
 
-def check_password():
-    def password_entered():
-        if st.session_state["password"] == st.secrets["password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # clear it
-        else:
-            st.session_state["password_correct"] = False
+openai.api_key = st.secrets["open_api_key"]
 
-    if "password_correct" not in st.session_state:
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        st.error("Password incorrect")
-        return False
-    else:
-        return True
+def interpret_regression(coeffs_df, metrics_df):
+    coeffs_text = coeffs_df.to_string(index=False)
+    metrics_text = metrics_df.to_string(index=False)
 
-# Main logic
+    prompt = f"""
+    You are an analyst interpreting the results of an OLS regression.
+
+    Here is the coefficients table:
+    {coeffs_text}
+
+    Here are the test metrics:
+    {metrics_text}
+
+    Please explain:
+    1. Which variables are statistically significant and what their coefficient signs mean.
+    2. How strong the model is (based on R², MAE, RMSE).
+    3. Practical interpretation of the coefficients (direction, magnitude, relevance).
+    4. Any limitations of the model.
+    """
+
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",  # fast/cheap
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+    )
+
+    return response.choices[0].message["content"]
+
+# ---- Interpretation function ----
+
+# ---- App ----
 if check_password():
     st.title("Secure Demo App")
     st.write("Welcome!")
@@ -34,11 +50,7 @@ st.subheader("Requirements:")
 st.text("1. MSA, Zip Code, County and City!.")
 st.text("2. The target variable (what you're predicting) with numerical values within the dataset.")
 
-
-
-#limitations
 st.subheader("Some limitations of this app:")
-
 st.text("1. Uploading files larger than 200MB (Streamlit’s hard cap).")
 st.text("2. Non-CSV file formats (Excel, JSON, TXT, etc.).")
 st.text("3. Missing a target column or trying to run with target=y that isn’t in the dataset.")
@@ -48,14 +60,12 @@ st.text("6. Columns with all NaN values.")
 st.text("7. Target column with non-numeric data.")
 st.text("8. Mismatched row counts after dropping NaNs (X and y index misalignment).")
 st.text("9. Extremely wide datasets (tens of thousands of features) → can cause memory errors with statsmodels.")
-
 st.text("Remember, Before uploading, your file should have MSA, Zip Code, County and City!")
 
-#csv
+# ---- File uploader ----
 uploaded_file = st.file_uploader("Upload a CSV File", type=["csv"])
 
 if uploaded_file is not None:
-    # tries
     try:
         df = pd.read_csv(uploaded_file)
         if df.empty:
@@ -66,7 +76,6 @@ if uploaded_file is not None:
         st.error(f"❌ Error reading CSV file: {e}")
         st.stop()
 
-    # selecting features
     try:
         features = st.multiselect("Select Features (X):", df.columns.tolist())
         target = st.selectbox("Select Target (y):", df.columns.tolist())
@@ -74,33 +83,27 @@ if uploaded_file is not None:
         if not features:
             st.warning("⚠️ Please select at least one feature column.")
             st.stop()
-
         if not target:
             st.warning("⚠️ Please select a target column.")
             st.stop()
-
         if target in features:
             st.error("❌ Target column cannot also be a feature.")
             st.stop()
 
-        #drop nans
+        # Drop NaNs
         X = df[features].dropna()
         y = df[target].loc[X.index]
 
-        #validating data types
         if not np.issubdtype(y.dtype, np.number):
             st.error("❌ Target column must be numeric.")
             st.stop()
-
         if not all(np.issubdtype(X[col].dtype, np.number) for col in X.columns):
             st.error("❌ All selected features must be numeric.")
             st.stop()
-
         if X.shape[1] > 10000:
             st.error("❌ Too many features selected (over 10,000). Try reducing the dataset.")
             st.stop()
 
-        # splitting 80 - 20
         try:
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
@@ -109,15 +112,14 @@ if uploaded_file is not None:
             st.error(f"❌ Error during train/test split: {e}")
             st.stop()
 
-        # selecting which model to use
+        # ---- Choose model ----
         model_type = st.radio("Choose Model:", ("OLS Regression", "Random Forest"))
 
-        # OLS REGRESSION
+        # ---- OLS ----
         if model_type == "OLS Regression":
             try:
                 X_train_const = sm.add_constant(X_train)
                 X_test_const = sm.add_constant(X_test, has_constant="add")
-
                 model = sm.OLS(y_train, X_train_const).fit()
 
                 summary_df = pd.DataFrame({
@@ -134,7 +136,6 @@ if uploaded_file is not None:
                 st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
                 st.dataframe(summary_df.style.format("{:.3f}"))
 
-                # metrics
                 y_pred = model.predict(X_test_const)
                 test_metrics = {
                     "MAE": mean_absolute_error(y_test, y_pred),
@@ -144,34 +145,44 @@ if uploaded_file is not None:
                 st.subheader("Test Metrics")
                 st.write(test_metrics)
 
-                # downloading
-                csv_summary = summary_df.to_csv().encode("utf-8")
-                st.download_button(
-                    label="📥 Download OLS Coefficients (CSV)",
-                    data=csv_summary,
-                    file_name="ols_coefficients.csv",
-                    mime="text/csv"
-                )
+                # ---- Interpretation ----
+                if st.button("Interpret Results"):
+                    interpretation = interpret_regression(summary_df, pd.DataFrame([test_metrics]))
+                    st.markdown("### 📊 Interpretation")
+                    st.write(interpretation)
 
-                metrics_df = pd.DataFrame([test_metrics])
-                csv_metrics = metrics_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download OLS Test Metrics (CSV)",
-                    data=csv_metrics,
-                    file_name="ols_test_metrics.csv",
-                    mime="text/csv"
-                )
+                    # ---- Build Master CSV ----
+                    coeffs_out = summary_df.copy()
+                    coeffs_out.insert(0, "Section", "Coefficients")
+
+                    metrics_out = pd.DataFrame([test_metrics])
+                    metrics_out.insert(0, "Section", "Test Metrics")
+
+                    interp_out = pd.DataFrame({"Section": ["Interpretation"], "Interpretation": [interpretation]})
+
+                    master_df = pd.concat([coeffs_out, metrics_out, interp_out], ignore_index=True)
+
+                    buffer = io.StringIO()
+                    master_df.to_csv(buffer, index=False)
+                    buffer.seek(0)
+
+                    st.download_button(
+                        label="⬇️ Download Master CSV",
+                        data=buffer,
+                        file_name="ols_master_results.csv",
+                        mime="text/csv"
+                    )
 
             except Exception as e:
                 st.error(f"❌ OLS Regression failed: {e}")
 
-        # RANDOM FOREST
+        # ---- RANDOM FOREST ----
         elif model_type == "Random Forest":
             try:
                 rf = RandomForestRegressor(n_estimators=100, random_state=42)
                 rf.fit(X_train, y_train)
-
                 y_pred = rf.predict(X_test)
+
                 st.subheader("Random Forest Metrics")
                 rf_metrics = {
                     "MAE": mean_absolute_error(y_test, y_pred),
@@ -180,7 +191,6 @@ if uploaded_file is not None:
                 }
                 st.write(rf_metrics)
 
-                # ✅ Export metrics
                 rf_metrics_df = pd.DataFrame([rf_metrics])
                 csv_rf_metrics = rf_metrics_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -197,7 +207,6 @@ if uploaded_file is not None:
                 }).sort_values(by="Importance", ascending=False)
                 st.dataframe(importances)
 
-                # ✅ Export feature importances
                 csv_importances = importances.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     label="📥 Download Feature Importances (CSV)",
