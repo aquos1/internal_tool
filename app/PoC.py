@@ -8,7 +8,8 @@ import numpy as np
 import openai
 import io
 
-openai.api_key = st.secrets["open_api_key"]
+# ✅ Make sure this matches your secrets.toml
+openai.api_key = st.secrets["openai_api_key"]
 
 def interpret_regression(coeffs_df, metrics_df):
     coeffs_text = coeffs_df.to_string(index=False)
@@ -37,9 +38,10 @@ def interpret_regression(coeffs_df, metrics_df):
     )
     return response.choices[0].message.content
 
-# ---- Interpretation function --
 
+# ---- App UI ----
 st.title("Regression & Random Forest Platform")
+
 st.subheader("Requirements:")
 st.text("1. MSA, Zip Code, County and City!.")
 st.text("2. The target variable (what you're predicting) with numerical values within the dataset.")
@@ -55,6 +57,7 @@ st.text("7. Target column with non-numeric data.")
 st.text("8. Mismatched row counts after dropping NaNs (X and y index misalignment).")
 st.text("9. Extremely wide datasets (tens of thousands of features) → can cause memory errors with statsmodels.")
 st.text("Remember, Before uploading, your file should have MSA, Zip Code, County and City!")
+
 
 # ---- File uploader ----
 uploaded_file = st.file_uploader("Upload a CSV File", type=["csv"])
@@ -109,7 +112,7 @@ if uploaded_file is not None:
         # ---- Choose model ----
         model_type = st.radio("Choose Model:", ("OLS Regression", "Random Forest"))
 
-        # ---- OLS ----
+        # ---- OLS REGRESSION ----
         if model_type == "OLS Regression":
             try:
                 X_train_const = sm.add_constant(X_train)
@@ -130,6 +133,7 @@ if uploaded_file is not None:
                 st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
                 st.dataframe(summary_df.style.format("{:.3f}"))
 
+                # ---- Predictions + Metrics ----
                 y_pred = model.predict(X_test_const)
                 test_metrics = {
                     "MAE": mean_absolute_error(y_test, y_pred),
@@ -139,78 +143,32 @@ if uploaded_file is not None:
                 st.subheader("Test Metrics")
                 st.write(test_metrics)
 
-                # ---- Interpretation ----
+                # ---- CSV EXPORTS ----
+                csv_summary = summary_df.to_csv().encode("utf-8")
+                st.download_button(
+                    label="📥 Download OLS Coefficients (CSV)",
+                    data=csv_summary,
+                    file_name="ols_coefficients.csv",
+                    mime="text/csv"
+                )
+
+                metrics_df = pd.DataFrame([test_metrics])
+                csv_metrics = metrics_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download OLS Test Metrics (CSV)",
+                    data=csv_metrics,
+                    file_name="ols_test_metrics.csv",
+                    mime="text/csv"
+                )
+
+                # ---- INTERPRETATION ----
                 if st.button("Interpret Results"):
                     interpretation = interpret_regression(summary_df, pd.DataFrame([test_metrics]))
                     st.markdown("### 📊 Interpretation")
                     st.write(interpretation)
 
-                    # ---- Build Master CSV ----
-                    coeffs_out = summary_df.copy()
-                    coeffs_out.insert(0, "Section", "Coefficients")
-
-                    metrics_out = pd.DataFrame([test_metrics])
-                    metrics_out.insert(0, "Section", "Test Metrics")
-
-                    interp_out = pd.DataFrame({"Section": ["Interpretation"], "Interpretation": [interpretation]})
-
-                    master_df = pd.concat([coeffs_out, metrics_out, interp_out], ignore_index=True)
-
-                    buffer = io.StringIO()
-                    master_df.to_csv(buffer, index=False)
-                    csv_bytes = buffer.getvalue().encode("utf-8")
-
-                    st.download_button(
-                        label="⬇️ Download Master CSV",
-                        data=csv_bytes,
-                        file_name="ols_master_results.csv",
-                        mime="text/csv"
-                    )
-
             except Exception as e:
                 st.error(f"❌ OLS Regression failed: {e}")
-
-        # ---- RANDOM FOREST ----
-        elif model_type == "Random Forest":
-            try:
-                rf = RandomForestRegressor(n_estimators=100, random_state=42)
-                rf.fit(X_train, y_train)
-                y_pred = rf.predict(X_test)
-
-                st.subheader("Random Forest Metrics")
-                rf_metrics = {
-                    "MAE": mean_absolute_error(y_test, y_pred),
-                    "RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
-                    "R²": r2_score(y_test, y_pred)
-                }
-                st.write(rf_metrics)
-
-                rf_metrics_df = pd.DataFrame([rf_metrics])
-                csv_rf_metrics = rf_metrics_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download Random Forest Metrics (CSV)",
-                    data=csv_rf_metrics,
-                    file_name="rf_test_metrics.csv",
-                    mime="text/csv"
-                )
-
-                st.subheader("Feature Importances")
-                importances = pd.DataFrame({
-                    "Feature": features,
-                    "Importance": rf.feature_importances_
-                }).sort_values(by="Importance", ascending=False)
-                st.dataframe(importances)
-
-                csv_importances = importances.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download Feature Importances (CSV)",
-                    data=csv_importances,
-                    file_name="rf_feature_importances.csv",
-                    mime="text/csv"
-                )
-
-            except Exception as e:
-                st.error(f"❌ Random Forest failed: {e}")
 
     except Exception as e:
         st.error(f"❌ Error during setup: {e}")
