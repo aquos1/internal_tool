@@ -31,12 +31,11 @@ def interpret_regression(coeffs_df, metrics_df):
     """
 
     response = openai.chat.completions.create(
-        model="gpt-4o-mini",  # fast/cheap
+        model="gpt-4o-mini",  # or gpt-4o
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
     )
-
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 # ---- Interpretation function --
 
