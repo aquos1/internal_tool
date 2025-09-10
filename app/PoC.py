@@ -101,7 +101,11 @@ if uploaded_file is not None:
                 st.subheader("OLS Regression Results")
                 st.metric("R-squared", f"{model.rsquared:.3f}")
                 st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
-                st.dataframe(summary_df.style.format("{:.3f}"))
+                numeric_cols = summary_df.select_dtypes(include=[np.number]).columns
+                st.subheader("OLS Regression Results")
+                st.metric("R-squared", f"{model.rsquared:.3f}")
+                st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
+                st.dataframe(summary_df.style.format({col: "{:.3f}" for col in numeric_cols}))
 
                 # ---- Predictions + Metrics ----
                 y_pred = model.predict(X_test_const)
