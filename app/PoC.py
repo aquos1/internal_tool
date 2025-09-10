@@ -38,12 +38,7 @@ def interpret_regression(coeffs_df, metrics_df):
 
     return response.choices[0].message["content"]
 
-# ---- Interpretation function ----
-
-# ---- App ----
-if check_password():
-    st.title("Secure Demo App")
-    st.write("Welcome!")
+# ---- Interpretation function --
 
 st.title("Regression & Random Forest Platform")
 st.subheader("Requirements:")
