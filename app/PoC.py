@@ -6,8 +6,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import numpy as np
 
-
-
 # ---- App UI ----
 st.title("Regression & Random Forest Platform")
 
@@ -27,7 +25,6 @@ st.text("8. Mismatched row counts after dropping NaNs (X and y index misalignmen
 st.text("9. Extremely wide datasets (tens of thousands of features) → can cause memory errors with statsmodels.")
 st.text("Remember, Before uploading, your file should have MSA, Zip Code, County and City!")
 
-
 # ---- File uploader ----
 uploaded_file = st.file_uploader("Upload a CSV File", type=["csv"])
 
@@ -43,6 +40,7 @@ if uploaded_file is not None:
         st.stop()
 
     try:
+        # ---- Feature + Target Selection ----
         features = st.multiselect("Select Features (X):", df.columns.tolist())
         target = st.selectbox("Select Target (y):", df.columns.tolist())
 
@@ -60,6 +58,7 @@ if uploaded_file is not None:
         X = df[features].dropna()
         y = df[target].loc[X.index]
 
+        # Validate datatypes
         if not np.issubdtype(y.dtype, np.number):
             st.error("❌ Target column must be numeric.")
             st.stop()
@@ -70,6 +69,7 @@ if uploaded_file is not None:
             st.error("❌ Too many features selected (over 10,000). Try reducing the dataset.")
             st.stop()
 
+        # Train/Test Split
         try:
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
@@ -102,12 +102,9 @@ if uploaded_file is not None:
                 st.metric("R-squared", f"{model.rsquared:.3f}")
                 st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
                 numeric_cols = summary_df.select_dtypes(include=[np.number]).columns
-                st.subheader("OLS Regression Results")
-                st.metric("R-squared", f"{model.rsquared:.3f}")
-                st.metric("Adj. R-squared", f"{model.rsquared_adj:.3f}")
                 st.dataframe(summary_df.style.format({col: "{:.3f}" for col in numeric_cols}))
 
-                # ---- Predictions + Metrics ----
+                # Predictions + Metrics
                 y_pred = model.predict(X_test_const)
                 test_metrics = {
                     "MAE": mean_absolute_error(y_test, y_pred),
@@ -137,6 +134,51 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(f"❌ OLS Regression failed: {e}")
 
+        # ---- RANDOM FOREST ----
+        elif model_type == "Random Forest":
+            try:
+                rf = RandomForestRegressor(n_estimators=100, random_state=42)
+                rf.fit(X_train, y_train)
+
+                # Predictions + Metrics
+                y_pred = rf.predict(X_test)
+                st.subheader("Random Forest Metrics")
+                rf_metrics = {
+                    "MAE": mean_absolute_error(y_test, y_pred),
+                    "RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
+                    "R²": r2_score(y_test, y_pred)
+                }
+                st.write(rf_metrics)
+
+                # CSV Export: Metrics
+                rf_metrics_df = pd.DataFrame([rf_metrics])
+                csv_rf_metrics = rf_metrics_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Random Forest Metrics (CSV)",
+                    data=csv_rf_metrics,
+                    file_name="rf_test_metrics.csv",
+                    mime="text/csv"
+                )
+
+                # Feature Importances
+                st.subheader("Feature Importances")
+                importances = pd.DataFrame({
+                    "Feature": features,
+                    "Importance": rf.feature_importances_
+                }).sort_values(by="Importance", ascending=False)
+                st.dataframe(importances)
+
+                # CSV Export: Feature Importances
+                csv_importances = importances.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Feature Importances (CSV)",
+                    data=csv_importances,
+                    file_name="rf_feature_importances.csv",
+                    mime="text/csv"
+                )
+
+            except Exception as e:
+                st.error(f"❌ Random Forest failed: {e}")
+
     except Exception as e:
         st.error(f"❌ Error during setup: {e}")
-
